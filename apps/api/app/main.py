@@ -24,7 +24,7 @@ from app.models import (
     IntegrityCase, IntegrityFinding, LoginAttempt, PaperBatch, StaffAssignment, StaffMember, User,
 )
 from app.schemas import (
-    AnswerSubmissionCreate, AppealCreate, AppealResolution, AssignmentCreate, CandidateCreate,
+    AnswerSubmissionCreate, AppealCreate, AppealResolution, AssignmentApproval, AssignmentCreate, CandidateCreate,
     CandidateOutput, CandidatePortalLink, CaseDecision, CaseFromFinding, CustodyEventCreate, ExaminationCreate,
     ExaminationOutput, FindingOutput, LoginOutput, PaperBatchCreate, StaffCreate, StaffOutput,
     UserCreate, UserOutput,
@@ -273,12 +273,90 @@ async def assign_staff(payload: AssignmentCreate, session: AsyncSession = Depend
         raise HTTPException(status_code=409, detail="Staff eligibility must be verified before assignment")
     if staff.employing_school_code.casefold() == payload.centre_code.casefold():
         raise HTTPException(status_code=409, detail="Staff cannot invigilate at their employing school centre")
-    assignment = StaffAssignment(**payload.model_dump(), approved_by=actor.id)
+    assignment = StaffAssignment(
+        **payload.model_dump(), created_by=actor.id, approved_by=None, reviewed_by=None,
+        status="PENDING_APPROVAL",
+    )
     session.add(assignment)
     await session.flush()
-    await append_audit(session, actor, "staff.assignment.created", "staff_assignment", str(assignment.id), {"examination_id": str(exam.id), "centre_code": payload.centre_code, "room_code": payload.room_code})
+    await append_audit(
+        session, actor, "staff.assignment.requested", "staff_assignment", str(assignment.id),
+        {"examination_id": str(exam.id), "centre_code": payload.centre_code, "room_code": payload.room_code, "status": assignment.status},
+    )
     await commit_or_conflict(session)
-    return {"id": str(assignment.id), "status": "ASSIGNED", "staff_id": str(staff.id), "examination_id": str(exam.id)}
+    return {"id": str(assignment.id), "status": assignment.status, "staff_id": str(staff.id), "examination_id": str(exam.id)}
+
+
+@app.get("/staff-assignments", tags=["staff"])
+async def list_staff_assignments(
+    limit: int = Query(default=200, ge=1, le=1000),
+    session: AsyncSession = Depends(get_session),
+    _: User = Depends(require_roles("SUPER_ADMIN", "ADMIN", "EXAM_OPERATIONS", "AUDITOR")),
+):
+    rows = (await session.execute(
+        select(StaffAssignment, StaffMember)
+        .join(StaffMember, StaffMember.id == StaffAssignment.staff_id)
+        .order_by(StaffAssignment.created_at.desc())
+        .limit(limit)
+    )).all()
+    return [
+        {
+            "id": str(item.id),
+            "examination_id": str(item.examination_id),
+            "staff_id": str(item.staff_id),
+            "staff_reference": staff.staff_reference,
+            "staff_name": staff.full_name,
+            "centre_code": item.centre_code,
+            "room_code": item.room_code,
+            "assignment_type": item.assignment_type,
+            "status": item.status,
+            "created_by": str(item.created_by),
+            "approved_by": str(item.approved_by) if item.approved_by else None,
+            "reviewed_by": str(item.reviewed_by) if item.reviewed_by else None,
+            "approval_note": item.approval_note,
+            "reviewed_at": item.reviewed_at,
+            "created_at": item.created_at,
+        }
+        for item, staff in rows
+    ]
+
+
+@app.patch("/staff-assignments/{assignment_id}/approval", tags=["staff"])
+async def review_staff_assignment(
+    assignment_id: UUID,
+    payload: AssignmentApproval,
+    session: AsyncSession = Depends(get_session),
+    actor: User = Depends(require_roles("SUPER_ADMIN", "ADMIN", "EXAM_OPERATIONS")),
+):
+    assignment = await session.scalar(
+        select(StaffAssignment).where(StaffAssignment.id == assignment_id).with_for_update()
+    )
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Staff assignment not found")
+    if assignment.status != "PENDING_APPROVAL":
+        raise HTTPException(status_code=409, detail="Only pending assignments can be reviewed")
+    if assignment.created_by == actor.id:
+        raise HTTPException(status_code=409, detail="The assignment requester cannot approve or reject their own request")
+    staff = await session.get(StaffMember, assignment.staff_id)
+    if payload.action == "APPROVE":
+        if staff is None or not staff.eligible:
+            raise HTTPException(status_code=409, detail="Staff eligibility has changed; re-verify before approving")
+        if staff.employing_school_code.casefold() == assignment.centre_code.casefold():
+            raise HTTPException(status_code=409, detail="Staff cannot invigilate at their employing school centre")
+        assignment.status = "APPROVED"
+        assignment.approved_by = actor.id
+    else:
+        assignment.status = "REJECTED"
+        assignment.approved_by = None
+    assignment.reviewed_by = actor.id
+    assignment.approval_note = payload.note.strip()
+    assignment.reviewed_at = datetime.now(timezone.utc)
+    await append_audit(
+        session, actor, "staff.assignment.reviewed", "staff_assignment", str(assignment.id),
+        {"action": payload.action, "status": assignment.status, "requester_id": str(assignment.created_by), "note": payload.note.strip()},
+    )
+    await session.commit()
+    return {"id": str(assignment.id), "status": assignment.status, "reviewed_by": str(actor.id), "reviewed_at": assignment.reviewed_at}
 
 
 @app.post("/paper-batches", status_code=201, tags=["chain-of-custody"])

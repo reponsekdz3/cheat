@@ -93,7 +93,12 @@ class StaffAssignment(Base, TimestampMixin):
     centre_code: Mapped[str] = mapped_column(String(80), nullable=False)
     room_code: Mapped[str] = mapped_column(String(40), nullable=False)
     assignment_type: Mapped[str] = mapped_column(String(40), default="INVIGILATOR", nullable=False)
-    approved_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="PENDING_APPROVAL", nullable=False)
+    approval_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class PaperBatch(Base, TimestampMixin):

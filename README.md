@@ -49,7 +49,7 @@ The first boot applies the Alembic schema migration and initializes the audit ch
 |---|---|
 | Identity | `POST /auth/token`, `GET /auth/me`, `POST /admin/users` |
 | Examination and candidates | `POST/GET /examinations`, `POST/GET /candidates`, `PATCH /candidates/{id}/attendance` |
-| Staff | `POST/GET /staff`, `PATCH /staff/{id}/eligibility`, `POST /staff-assignments` |
+| Staff | `POST/GET /staff`, `PATCH /staff/{id}/eligibility`, `POST /staff-assignments`, `GET /staff-assignments`, `PATCH /staff-assignments/{id}/approval` |
 | Paper custody | `POST /paper-batches`, `POST /paper-batches/{id}/events`, `GET /paper-batches/{id}/events`, `GET /paper-batches/{id}/verify` |
 | Answer analysis | `POST /answer-submissions`, `POST /integrity/analyze/{examination_id}`, `GET /integrity/findings` |
 | Casework | `POST /cases/from-finding/{finding_id}`, `GET /cases`, `POST /cases/{id}/decision`, `POST /cases/{id}/appeals`, `POST /appeals/{id}/resolution` |

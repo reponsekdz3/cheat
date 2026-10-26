@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -169,3 +169,8 @@ class FindingOutput(BaseModel):
 class CandidatePortalLink(BaseModel):
     user_id: UUID
     verification_reference: str = Field(min_length=5, max_length=200)
+
+
+class AssignmentApproval(BaseModel):
+    action: Literal["APPROVE", "REJECT"]
+    note: str = Field(min_length=5, max_length=500)
