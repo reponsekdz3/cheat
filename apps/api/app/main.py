@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.audit import append_audit, audit_chain_status
+from app.audit import append_audit, audit_chain_status, order_custody_events
 from app.config import settings
 from app.database import SessionLocal, engine, get_session
 from app.integrity import MODEL_VERSION, analyze_answer_patterns
@@ -322,8 +322,11 @@ async def add_custody_event(
 
 @app.get("/paper-batches/{batch_id}/events", tags=["chain-of-custody"])
 async def list_custody_events(batch_id: UUID, session: AsyncSession = Depends(get_session), _: User = Depends(require_roles("SUPER_ADMIN", "ADMIN", "EXAM_OPERATIONS", "INVESTIGATOR", "AUDITOR"))):
-    events = list((await session.scalars(select(CustodyEvent).where(CustodyEvent.batch_id == batch_id).order_by(CustodyEvent.created_at, CustodyEvent.id))).all())
-    return [{"id": str(e.id), "event_type": e.event_type, "location_code": e.location_code, "performed_by": str(e.performed_by), "previous_hash": e.previous_hash, "event_hash": e.event_hash, "created_at": e.created_at} for e in events]
+    events = list((await session.scalars(select(CustodyEvent).where(CustodyEvent.batch_id == batch_id))).all())
+    ordered, valid = order_custody_events(events)
+    if not valid:
+        raise HTTPException(status_code=409, detail="Custody chain contains an orphan or fork; investigate before use")
+    return [{"id": str(e.id), "event_type": e.event_type, "location_code": e.location_code, "performed_by": str(e.performed_by), "previous_hash": e.previous_hash, "event_hash": e.event_hash, "created_at": e.created_at} for e in ordered]
 
 
 @app.get("/paper-batches/{batch_id}/verify", tags=["chain-of-custody"])
@@ -336,10 +339,13 @@ async def verify_custody_chain(
     if batch is None:
         raise HTTPException(status_code=404, detail="Paper batch not found")
     events = list((await session.scalars(
-        select(CustodyEvent).where(CustodyEvent.batch_id == batch_id).order_by(CustodyEvent.created_at, CustodyEvent.id)
+        select(CustodyEvent).where(CustodyEvent.batch_id == batch_id)
     )).all())
+    ordered, chain_is_complete = order_custody_events(events)
+    if not chain_is_complete:
+        return {"batch_id": str(batch.id), "valid": False, "event_count": len(events), "reason": "custody chain has an orphan or fork"}
     previous = "0" * 64
-    for event in events:
+    for event in ordered:
         event_body = {
             "batch_id": str(event.batch_id),
             "event_type": event.event_type,

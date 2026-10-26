@@ -10,7 +10,7 @@ depends_on = None
 
 def upgrade() -> None:
     Base.metadata.create_all(bind=op.get_bind())
-    op.execute("INSERT INTO audit_head (id, head_hash) VALUES (1, repeat('0', 64)) ON CONFLICT (id) DO NOTHING")
+    op.execute("INSERT INTO audit_head (id, head_hash, sequence_number) VALUES (1, repeat('0', 64), 0) ON CONFLICT (id) DO NOTHING")
 
 
 def downgrade() -> None:

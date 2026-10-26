@@ -18,7 +18,7 @@ The container applies Alembic migrations before starting the API. For a producti
 - Use encrypted, access-controlled database backups with retention and restore objectives approved by the data owner.
 - Back up the evidence/object store separately and reconcile object metadata against database references.
 - Keep encryption keys separate from backups.
-- Run scheduled restore drills into isolated environments; verify row counts, audit linkage and selected custody chains before reopening service.
+- Run scheduled restore drills into isolated environments; verify row counts, audit sequence and payload hashes, plus selected custody chains before reopening service.
 - Never restore an unverified backup directly into a live examination system.
 
 ## Authentication attempt retention

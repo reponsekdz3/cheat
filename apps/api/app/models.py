@@ -169,12 +169,15 @@ class CaseAppeal(Base, TimestampMixin):
 class AuditHead(Base):
     __tablename__ = "audit_head"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sequence_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     head_hash: Mapped[str] = mapped_column(String(64), nullable=False, default=lambda: "0" * 64)
 
 
 class AuditEvent(Base, TimestampMixin):
     __tablename__ = "audit_events"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    hash_version: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     action: Mapped[str] = mapped_column(String(120), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(80), nullable=False)

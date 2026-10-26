@@ -28,7 +28,7 @@ The initial system is a modular application, not microservices.
 
 `PREPARED → SEALED → DISPATCHED → RECEIVED → OPENED → RETURNED → RECONCILED`
 
-Transitions out of sequence are rejected by the API. Event hashes link each event to its predecessor, and the application audit event records the transition. Hashes only provide stronger assurance when checkpoints are held independently; a database administrator who can rewrite both history and head can otherwise rewrite the chain. A production deployment must anchor periodic hashes in independently controlled immutable storage and verify custody event hashes as a scheduled integrity job.
+Transitions out of sequence are rejected by the API. Event hashes link each event to its predecessor; verification follows predecessor hashes rather than relying on timestamp order, recomputes each event payload hash, and checks the stored batch head. Hashes only provide stronger assurance when checkpoints are held independently; a database administrator who can rewrite both history and head can otherwise rewrite the chain. A production deployment must anchor periodic audit hashes in independently controlled immutable storage and schedule custody-event verification. Audit entries migrated from the older hash format are marked legacy and are only link-checked.
 
 ## Answer-pattern analysis
 
