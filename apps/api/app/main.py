@@ -183,6 +183,7 @@ async def link_candidate_portal(
         raise HTTPException(status_code=404, detail="Candidate or portal user not found")
     if user.role != "CANDIDATE":
         raise HTTPException(status_code=422, detail="Linked user must have the CANDIDATE role")
+    user.must_change_password = True
     if candidate.portal_user_id is not None:
         raise HTTPException(status_code=409, detail="Candidate already has a linked portal account")
     candidate.portal_user_id = user.id
