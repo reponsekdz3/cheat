@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +20,7 @@ from app.database import SessionLocal, engine, get_session
 from app.integrity import MODEL_VERSION, analyze_answer_patterns
 from app.models import (
     AnswerSubmission, AuditHead, Candidate, CaseAppeal, CustodyEvent, Examination,
-    IntegrityCase, IntegrityFinding, PaperBatch, StaffAssignment, StaffMember, User,
+    IntegrityCase, IntegrityFinding, LoginAttempt, PaperBatch, StaffAssignment, StaffMember, User,
 )
 from app.schemas import (
     AnswerSubmissionCreate, AppealCreate, AppealResolution, AssignmentCreate, CandidateCreate,
@@ -84,10 +85,29 @@ async def readiness(session: AsyncSession = Depends(get_session)) -> dict[str, s
 
 
 @app.post("/auth/token", response_model=LoginOutput, tags=["identity"])
-async def login(form: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_session)):
-    user = await session.scalar(select(User).where(User.email == form.username.lower()))
-    if user is None or not user.is_active or not verify_password(form.password, user.password_hash):
+async def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_session)):
+    normalized_email = form.username.strip().lower()
+    ip_address = request.client.host if request.client else "unknown"
+    key = settings.login_hash_secret.encode("utf-8")
+    email_key = hmac.new(key, ("email:" + normalized_email).encode("utf-8"), hashlib.sha256).hexdigest()
+    ip_key = hmac.new(key, ("ip:" + ip_address).encode("utf-8"), hashlib.sha256).hexdigest()
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+    email_failures = int(await session.scalar(select(func.count(LoginAttempt.id)).where(
+        LoginAttempt.email_key == email_key, LoginAttempt.succeeded.is_(False), LoginAttempt.created_at >= cutoff
+    )) or 0)
+    ip_failures = int(await session.scalar(select(func.count(LoginAttempt.id)).where(
+        LoginAttempt.ip_key == ip_key, LoginAttempt.succeeded.is_(False), LoginAttempt.created_at >= cutoff
+    )) or 0)
+    if email_failures >= 8 or ip_failures >= 30:
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again later.")
+
+    user = await session.scalar(select(User).where(User.email == normalized_email))
+    valid = user is not None and user.is_active and verify_password(form.password, user.password_hash)
+    session.add(LoginAttempt(email_key=email_key, ip_key=ip_key, succeeded=bool(valid)))
+    if not valid:
+        await session.commit()
         raise HTTPException(status_code=401, detail="Incorrect email or password", headers={"WWW-Authenticate": "Bearer"})
+    assert user is not None
     token = create_access_token(user)
     await append_audit(session, user, "auth.login", "user", str(user.id), {"result": "success"})
     await session.commit()
@@ -201,7 +221,7 @@ async def create_staff(payload: StaffCreate, session: AsyncSession = Depends(get
     data = payload.model_dump()
     data["eligible"] = False
     data["eligibility_note"] = None
-    staff = StaffMember(**data, eligibility_checked_by=None)
+    staff = StaffMember(**data, eligibility_checked_by=None, created_by=actor.id)
     session.add(staff)
     await session.flush()
     await append_audit(session, actor, "staff.registered", "staff_member", str(staff.id), {"staff_reference": staff.staff_reference})
@@ -224,6 +244,8 @@ async def set_staff_eligibility(
     staff = await session.get(StaffMember, staff_id)
     if staff is None:
         raise HTTPException(status_code=404, detail="Staff member not found")
+    if staff.created_by is not None and staff.created_by == actor.id:
+        raise HTTPException(status_code=409, detail="Eligibility reviewer must be different from the staff-record creator")
     staff.eligible = eligible
     staff.eligibility_checked_by = actor.id
     staff.eligibility_checked_at = datetime.now(timezone.utc)

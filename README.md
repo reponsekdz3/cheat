@@ -32,7 +32,7 @@ Requirements: Docker Desktop / Docker Engine with Compose, a current web browser
 
 1. Copy `.env.example` to `.env`.
 2. Replace `POSTGRES_PASSWORD` with a long random password. Set `DATABASE_URL` to use the same password and database username. Use URL-safe random characters for the password, or percent-encode reserved URL characters.
-3. Set `JWT_SECRET` to a unique random secret of at least 32 bytes. A convenient generation command is `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+3. Set `JWT_SECRET` to a unique random secret of at least 32 bytes and `LOGIN_HASH_SECRET` to a different random secret for privacy-preserving login throttling. A convenient generation command is `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
 4. Set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` for the first startup only. Use a unique password of at least 16 characters. After the first administrator is created, remove those variables from the runtime environment and manage subsequent accounts through authorized administration.
 5. Start the system with `docker compose up --build -d`.
 6. Open the operations console at `http://localhost:3000`, API docs at `http://localhost:8000/docs`, and readiness status at `http://localhost:8000/health/ready`.

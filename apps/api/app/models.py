@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -28,6 +28,20 @@ class User(Base, TimestampMixin):
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
     role: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+
+
+class LoginAttempt(Base, TimestampMixin):
+    __tablename__ = "login_attempts"
+    __table_args__ = (
+        Index("ix_login_attempt_email_created", "email_key", "created_at"),
+        Index("ix_login_attempt_ip_created", "ip_key", "created_at"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_id)
+    email_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    ip_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    succeeded: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
 class Examination(Base, TimestampMixin):
@@ -67,6 +81,7 @@ class StaffMember(Base, TimestampMixin):
     eligibility_checked_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     eligibility_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     eligibility_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
 class StaffAssignment(Base, TimestampMixin):

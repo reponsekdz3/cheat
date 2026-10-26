@@ -7,6 +7,8 @@ Candidate identity, registration, examination responses, incident reports and di
 ## Current controls
 
 - Argon2-based password hashing.
+- Database-backed failed-login throttling: keyed email/IP pseudonyms, at most 8 failures per email or 30 per client IP in a 15-minute window; raw email and IP are not stored in the attempt table.
+- The staff-record creator cannot approve that same staff member's eligibility.
 - JWT access tokens expire after a configurable short duration (default 15 minutes).
 - Explicit role checks on protected APIs.
 - Basic validation of identifiers, field sizes and answer-response values.
