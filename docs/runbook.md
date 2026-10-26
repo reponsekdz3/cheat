@@ -21,6 +21,10 @@ The container applies Alembic migrations before starting the API. For a producti
 - Run scheduled restore drills into isolated environments; verify row counts, audit linkage and selected custody chains before reopening service.
 - Never restore an unverified backup directly into a live examination system.
 
+## Authentication attempt retention
+
+The login throttling table stores only keyed pseudonyms for the normalized email and client IP, plus success state and timestamp. Apply a reviewed retention policy and periodically delete expired attempt rows after the required audit/incident window; do not retain raw IP addresses or passwords for throttling. Behind a reverse proxy, configure only trusted proxy addresses so client IP throttling cannot be spoofed or collapsed onto the proxy address.
+
 ## Secret rotation
 
 Rotate database credentials and JWT signing secrets using an approved change window. JWT secret rotation invalidates existing access tokens. A production implementation should support key identifiers and overlapping verification keys to avoid uncontrolled outage. Do not commit secret values to GitHub issues, code, test fixtures or build logs.

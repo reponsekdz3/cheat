@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -63,6 +64,14 @@ async def commit_or_conflict(session: AsyncSession) -> None:
     except IntegrityError as error:
         await session.rollback()
         raise HTTPException(status_code=409, detail="Record conflicts with an existing unique or integrity constraint") from error
+
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_conflict_handler(_: Request, __: IntegrityError) -> JSONResponse:
+    # Flush-time as well as commit-time unique/FK violations should be safe API conflicts,
+    # not internal error pages that disclose database details.
+    return JSONResponse(status_code=409, content={"detail": "Record conflicts with an existing unique or integrity constraint"})
 
 
 @app.get("/health/live", tags=["health"])
