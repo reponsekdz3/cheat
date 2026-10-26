@@ -23,7 +23,7 @@ from app.models import (
 )
 from app.schemas import (
     AnswerSubmissionCreate, AppealCreate, AppealResolution, AssignmentCreate, CandidateCreate,
-    CandidateOutput, CaseDecision, CaseFromFinding, CustodyEventCreate, ExaminationCreate,
+    CandidateOutput, CandidatePortalLink, CaseDecision, CaseFromFinding, CustodyEventCreate, ExaminationCreate,
     ExaminationOutput, FindingOutput, LoginOutput, PaperBatchCreate, StaffCreate, StaffOutput,
     UserCreate, UserOutput,
 )
@@ -139,6 +139,30 @@ async def create_candidate(payload: CandidateCreate, session: AsyncSession = Dep
     await append_audit(session, actor, "candidate.registered", "candidate", str(candidate.id), {"examination_id": str(exam.id), "school_code": candidate.school_code})
     await commit_or_conflict(session)
     return candidate
+
+
+@app.post("/candidates/{candidate_id}/portal-access", status_code=201, tags=["candidates"])
+async def link_candidate_portal(
+    candidate_id: UUID,
+    payload: CandidatePortalLink,
+    session: AsyncSession = Depends(get_session),
+    actor: User = Depends(require_roles("SUPER_ADMIN", "ADMIN", "EXAM_OPERATIONS")),
+):
+    candidate = await session.get(Candidate, candidate_id)
+    user = await session.get(User, payload.user_id)
+    if candidate is None or user is None:
+        raise HTTPException(status_code=404, detail="Candidate or portal user not found")
+    if user.role != "CANDIDATE":
+        raise HTTPException(status_code=422, detail="Linked user must have the CANDIDATE role")
+    if candidate.portal_user_id is not None:
+        raise HTTPException(status_code=409, detail="Candidate already has a linked portal account")
+    candidate.portal_user_id = user.id
+    await append_audit(
+        session, actor, "candidate.portal.linked", "candidate", str(candidate.id),
+        {"portal_user_id": str(user.id), "verification_reference": payload.verification_reference},
+    )
+    await session.commit()
+    return {"candidate_id": str(candidate.id), "portal_user_id": str(user.id), "status": "LINKED"}
 
 
 @app.get("/candidates", response_model=list[CandidateOutput], tags=["candidates"])
@@ -364,6 +388,25 @@ async def list_findings(
     if examination_id:
         query = query.where(IntegrityFinding.examination_id == examination_id)
     return list((await session.scalars(query)).all())
+
+
+@app.get("/my/cases", tags=["case-management"])
+async def list_my_cases(
+    session: AsyncSession = Depends(get_session),
+    actor: User = Depends(require_roles("CANDIDATE")),
+):
+    cases = list((await session.scalars(
+        select(IntegrityCase)
+        .join(Candidate, Candidate.id == IntegrityCase.affected_candidate_id)
+        .where(Candidate.portal_user_id == actor.id)
+        .order_by(IntegrityCase.created_at.desc())
+    )).all())
+    return [
+        {"id": str(c.id), "finding_id": str(c.finding_id), "status": c.status,
+         "outcome": c.outcome, "decision_notes": c.decision_notes,
+         "created_at": c.created_at, "decided_at": c.decided_at}
+        for c in cases
+    ]
 
 
 @app.post("/cases/from-finding/{finding_id}", status_code=201, tags=["case-management"])

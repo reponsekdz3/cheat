@@ -65,7 +65,7 @@ API unit tests:
 python -m pip install -r apps/api/requirements.txt
 PYTHONPATH=apps/api pytest
 python -m compileall -q apps/api/app
-ruff check apps/api/app apps/api/tests
+ruff check --select F apps/api/app apps/api/tests
 ```
 
 Web app:

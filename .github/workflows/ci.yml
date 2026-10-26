@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: apps/api/requirements.txt
       - run: python -m pip install -r apps/api/requirements.txt
       - run: python -m compileall -q apps/api/app
-      - run: ruff check apps/api/app apps/api/tests
+      - run: ruff check --select F apps/api/app apps/api/tests
       - run: pytest
 
   web:

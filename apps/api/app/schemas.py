@@ -164,3 +164,8 @@ class FindingOutput(BaseModel):
     evidence: dict
     status: str
     created_at: datetime
+
+
+class CandidatePortalLink(BaseModel):
+    user_id: UUID
+    verification_reference: str = Field(min_length=5, max_length=200)
